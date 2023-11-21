@@ -31,6 +31,11 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r warning=FALSE}
 install.packages('ggsoccer')
 install.packages("patchwork")
+install.packages('devtools')
+devtools::install_github("statsbomb/SDMTools")
+devtools::install_github("statsbomb/StatsBombR")
+
+
 ```
 
 ```{r include=FALSE}
@@ -47,27 +52,28 @@ library(readr)
 library(forcats)  # Load forcats for fct_reorder function
 library(ggsoccer)
 library(patchwork)
+library(tidyverse)
+library(StatsBombR)
+library(ggsoccer)
 
 
 ```
 
-```{r warning=FALSE}
+```{r load datasets, warning=FALSE, message=FALSE}
 
-appearances <- read_csv("appearances.csv")
+appearances <- read_csv("data/appearances.csv")
 
-players <- read_csv("players.csv")
+players <- read_csv("data/players.csv")
 
-teams <- read_csv("teams.csv")
+teams <- read_csv("data/teams.csv")
 
-teamstats <- read_csv("teamstats.csv")
+teamstats <- read_csv("data/teamstats.csv")
 
-shots <- read_csv("shots.csv")
+shots <- read_csv("data/shots.csv")
 
-leagues <- read_csv("leagues.csv")
+leagues <- read_csv("data/leagues.csv")
 
-games <- read_csv("games.csv")
-
-
+games <- read_csv("data/games.csv")
 
 ```
 
@@ -87,7 +93,20 @@ Our analysis delves into key metrics that are critical in evaluating the compati
 
 3.  **Distribution of Goal Scoring Percentage Across the League**: This analysis helps in understanding how goals are spread among teams, indicating whether a league is dominated by a few teams or if scoring opportunities are more evenly distributed.
 
-```{r warning=FALSE}
+```{r inspect data, warning =FALSE, message = FALSE}
+
+skim(appearances)
+skim(players)
+skim(teams)
+skim(teamstats)
+skim(shots)
+skim(leagues)
+skim(games)
+
+```
+
+
+```{r warning=FALSE, message=FALSE}
 #Create two columns showing the total amount of home and away goals per game
 goals_per_game <-
   games %>% 
@@ -119,7 +138,7 @@ goals_longer<-
 
 ```
 
-```{r}
+```{r, warning =FALSE, message = FALSE}
 # Match the league names
 league_names <- c("1" = "Premier League", "2" = "Serie A", "3" = "Bundesliga", "4" = "La Liga", "5" = "Ligue 1")
 
@@ -156,14 +175,22 @@ plot_goals <-
             position = position_dodge(width = 0.9),
             vjust = -0.3, size = 3) +
   scale_fill_manual(values = color_values,
-                    labels = labels_for_legend) +
+                    labels = labels_for_legend,
+                    name = "") +
   scale_x_continuous(breaks = 
                        as.numeric(names(league_names)), labels = league_names)+
-   labs(x = "League", y = "Average Goals per Game", 
-       title = "The Bundesliga Stands Out: Leading in Average Goals per Game",
+   labs(x = "", y = "Average Goals per Game", 
+       title = "The Bundesliga Stands Out: 
+Leading in Average Goals per Game",
        subtitle = "Home vs. Away: A Comparison of Average Goals Across Leagues")+
-  theme(legend.title = element_blank())+
-  theme_minimal()
+  
+  theme_minimal() +
+  
+  theme(legend.title = element_blank(),
+        plot.title = element_text(face="bold", size=18),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor =element_blank(),
+        axis.text.y=element_blank())
   
   
 # Print the plot
@@ -182,7 +209,7 @@ Given that the number of games played across the various leagues shows no signif
 
 In either case, these factors significantly contribute to the Bundesliga's appeal as a strikingly favorable league for goal-scorers.
 
-```{r}
+```{r, warning =FALSE, message = FALSE}
 # Join tables
 data <- teamstats %>% 
   left_join(games, by = "gameID") 
@@ -213,10 +240,10 @@ data %>%
   geom_col() +
    
   # Custom colors
-  scale_fill_manual(values=c('#bebebe', '#eda247')) +
+  scale_fill_manual(values=c('#bebebe', '#c70007')) +
   
   # Custom titles and axes
-  labs(title = "Seria A and La Liga have more yellow cards",
+  labs(title = "Serie A and La Liga have more yellow cards",
        subtitle = "Average number of yellow cards per game",
        x = "",
        y = ""
@@ -259,7 +286,7 @@ data %>%
   scale_fill_manual(values=c('#bebebe', '#c70007')) +
   
   # Custom titles and axes
-  labs(title = "Seria A and Ligue 1 have more red cards",
+  labs(title = "Serie A and Ligue 1 have more red cards",
        subtitle = "Average number of red cards per game",
        x = "",
        y = ""
@@ -300,7 +327,7 @@ data %>%
   scale_fill_manual(values=c('#bebebe', '#c70007')) +
   
   # Custom titles and axes
-  labs(title = "Seria A and La Liga are more 'dangerous'",
+  labs(title = "Serie A and La Liga are more 'dangerous'",
        subtitle = "Average number of fouls per game",
        x = "",
        y = ""
@@ -325,7 +352,7 @@ Our comprehensive analysis, supported by graphically represented data, reveals s
 
 3.  **Bundesliga as the Preferred Choice**: Integrating this analysis with our earlier conclusions about goal-scoring opportunities, the Bundesliga emerges as a particularly attractive option for strikers. Not only does it offer a higher average of goals scored per game, but it also appears to have a lower risk of severe fouls and injuries compared to Serie A, La Liga, and Ligue 1. This combination of factors makes the Bundesliga an ideal league for strikers to commence their careers, offering a balance of high goal-scoring potential and a relatively safer playing environment.
 
-```{r}
+```{r, warning =FALSE, message = FALSE}
 # Merge datasets
 m_data <- merge(teamstats, games, by = "gameID", all.x = TRUE)
 merge_data <- merge(m_data, leagues, by = "leagueID", all.x = TRUE)
@@ -333,7 +360,7 @@ merged_data <- merge(merge_data, teams, by = "teamID", all.x = TRUE)
 
 ```
 
-```{r}
+```{r, warning =FALSE, message = FALSE}
 
 # Calculate the total goals scored by each team in one league
 total_goals_by_team <- merged_data %>%
@@ -362,23 +389,28 @@ top_5_teams <- unique_merged_data_league %>%
   mutate(name.y = fct_reorder(name.y, percentage_goals, .desc = TRUE)) %>% 
   select(percentage_goals, name.y, name.x)
 
-# Create a bar plot using ggplot2
+# Create a bar plot using ggplot2 without legend and with text labels
 ggplot(top_5_teams, aes(x = percentage_goals, y = fct_reorder(name.y, percentage_goals), fill = as.factor(name.x))) +
   geom_bar(stat = "identity") +
-  geom_text(aes(label = sprintf("%.2f%%", percentage_goals), group = name.x), 
-            position = position_nudge(x = 1.0), size = 3) +
+  geom_text(aes(label = sprintf("%.2f%%", percentage_goals), group = name.x), position = position_stack(vjust = 0.5), size = 3, color = "white") +
   scale_fill_manual(values = c("Premier League" = "#38003c", "Bundesliga" = "#D3010C", "Ligue 1" = "#dae025")) +
   # Set specific league colors
   facet_wrap(~ name.x, scales = "free_y") +
-  labs(title = "Bayern Munich and Borussia Dortmund collectively score 17.92% goals for Bundesliga, making it a top choice", caption = " Top 5 Teams with Highest Share of Goals Scored in Each League",
-       x = "Percentage of Goals Scored (Within League)", y = "Team Names") +
-  theme_minimal() + 
+  labs(title = "Top 5 Teams with Highest Share of 
+Goals Scored in Each League",
+       subtitle = "Bayern Munich and Borussia Dortmund collectively score 17.92% goals for
+Bundesliga, making it a top choice",
+       x = "Percentage of Goals Scored (Within League)", y = "") +
   scale_x_continuous() +
+  theme_minimal() +
   theme(
-    legend.position = "none",
-    plot.title = element_text(hjust = 0),      # Left align title
-    plot.subtitle = element_text(hjust = 0)    # Left align subtitle
-    )
+    plot.title = element_text(face = "bold", size = 18, hjust = 0),  # Left align title
+    plot.subtitle = element_text(hjust = 0),  # Left align subtitle
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text.x=element_blank(),
+    legend.position = "none"
+  )
 
 
 ```
@@ -403,7 +435,7 @@ Determining the most suitable team for a striker is a multifaceted and intricate
 
 4.  **Heat Map for Ball Possession and Tactical Concentration**: A heat map analysis will enable us to visualize the areas of the pitch where teams concentrate their play, offering insights into their tactical inclinations and ball possession patterns.
 
-```{r}
+```{r match teams with players, warning =FALSE, message = FALSE}
 # keep only required teams
 games1 <- games %>% 
   filter(leagueID == 3) %>% 
@@ -441,7 +473,7 @@ players1 <- match_player %>%
 
 ```
 
-```{r}
+```{r passes per team, warning =FALSE, message = FALSE}
 # Creating a database which shows key passes per team
 # Select only the relevant columns
 appearances <- appearances %>% 
@@ -476,7 +508,8 @@ pct_key_passes <-
 
 ```
 
-```{r}
+```{r plot passes per team, warning =FALSE, message = FALSE}
+# Create a named vector with the team IDs and corresponding names to use when facet wraping
 # Create a named vector with the team IDs and corresponding names to use when facet wraping
 team_names <- setNames(c("Bayern Munich", "Borussia Dortmund"), c("117", "129"))
 
@@ -495,10 +528,19 @@ plot_keyp <- ggplot(pct_key_passes, aes(x = season, y = ratio, group = teamID,
             hjust = 0.5,                  
             color = "black",
             size=2.5)+
-   labs(title = "Synced Trajectories: Bayern Munich and Borussia Dortmund Match Playmaking Trends",
-       subtitle = "Key Passes to Assists Ratios Reveal Consistent Patterns from 2014 to 2020") +
+   labs(title = "Synced Trajectories: Bayern Munich and
+Borussia Dortmund Match Playmaking Trends",
+       subtitle = "Key Passes to Assists Ratios Reveal Consistent Patterns from 2014 to 2020",
+       x= "",
+       y="") +
   scale_y_continuous(limits = c(0,NA))+
-  theme(legend.position = "none")
+  theme_minimal()+
+  theme(legend.position = "none",
+        plot.title = element_text(face="bold", size=18),
+        panel.grid.major = element_blank(), 
+        #panel.grid.minor =element_blank()
+        
+        )
 
 plot_keyp
 ```
@@ -527,7 +569,7 @@ data %>%
   geom_col() +
   
   # Custom colors
-  scale_fill_manual(values=c('#c70007', '#FDE100')) +
+  scale_fill_manual(values=c('#c70007', '#bebebe')) +
   
   # Custom titles and axes
   labs(title = "Bayern Munich creates more opportunities to score",
@@ -567,7 +609,7 @@ data %>%
   geom_col() +
   
   # Custom colors
-  scale_fill_manual(values=c('#c70007', '#FDE100')) +
+  scale_fill_manual(values=c('#c70007', '#bebebe')) +
   
   # Custom titles and axes
   labs(title = "Bayern Munich makes more shots",
@@ -607,7 +649,7 @@ data %>%
   geom_col() +
   
   # Custom colors
-  scale_fill_manual(values=c('#c70007', '#FDE100')) +
+  scale_fill_manual(values=c('#c70007', '#bebebe')) +
   
   # Custom titles and axes
   labs(title = "Bayern Munich makes more completed passes",
@@ -630,7 +672,7 @@ Our analysis conclusively demonstrates that Bayern Munich consistently outperfor
 
 However, it's important to consider the qualitative aspects alongside these quantitative findings, particularly for a young, emerging striker. The likelihood of securing a spot in Bayern Munich's starting eleven might present a significant challenge, given the team's depth of established talent and competitive environment. In contrast, Borussia Dortmund has garnered a reputation for nurturing and developing young talent, offering a potentially more accessible pathway for a fledgling striker to gain valuable playing experience and grow professionally.
 
-```{r}
+```{r, warning =FALSE, message = FALSE}
 games<- games %>% 
 select(gameID, homeTeamID, awayTeamID, date) %>% 
   mutate(date = as.Date(date,format = "%Y-%m-%d")) %>% 
@@ -656,6 +698,7 @@ top_scorer_bayern <- left_join(new_Data, players, by = c("shooterID" = "playerID
 
 top_scorer <- left_join(top_scorer_dortmund, top_scorer_bayern, by = "year")
 
+custom_colors_dortmund <- c("Erling Haaland" = "#e34a33", "Marco Reus" = "#fdbb84", "Pierre-Emerick Aubameyang" = "#05205e")
 
 plot_dortmund <- ggplot(top_scorer, aes(x = year, y = count.x, color = name_dortmund))+
   geom_point()+
@@ -663,24 +706,39 @@ plot_dortmund <- ggplot(top_scorer, aes(x = year, y = count.x, color = name_dort
   geom_text(aes(label = count.x), vjust = 1.3)+
   labs(y = "Number of Goals",
        color = "Dortmund Player",
-       title = "Dortmund has more tactical diversity allowing for different strikers to shine",
+       title = "Dortmund has more tactical diversity allowing
+for different strikers to shine",
        subtitle = "Top scorer of both clubs in a calendar year"
        )+
+  
+  theme_minimal() +
+  
   theme(
   axis.title.x = element_blank(),  # Remove x-axis title
   axis.text.x = element_blank(),   # Remove x-axis text/labels
   axis.ticks.x = element_blank(),   # Remove x-axis ticks
-  plot.title = element_text(hjust = 0),      # Left align title
-  plot.subtitle = element_text(hjust = 0)    # Left align subtitle
-)
+  plot.title = element_text(hjust = 0, face="bold", size=18),      # Left align title
+  plot.subtitle = element_text(hjust = 0),    # Left align subtitle
+  panel.grid.major = element_blank()
+  ) +
+  scale_color_manual(values = custom_colors_dortmund)
  
+
+custom_colors_bayern <- c("Arjen Robben" = "#e34a33", "Robert Lewandowski" = "#fdbb84")
+
 plot_bayern <- ggplot(top_scorer, aes(x = year, y = count.y, color = name_bayern))+ 
   geom_point()+
   geom_line()+
   geom_text(aes(label = count.y), vjust = 1.3)+
   labs(x = "Year",
        y = "Number of Goals",
-       color = "Bayern Player")
+       color = "Bayern Player")+
+  scale_color_manual(values = custom_colors_bayern) +
+  
+  theme_minimal() +
+  
+  theme(panel.grid.major = element_blank()) +
+  ylim(c(50,160))
 
 plot_dortmund / plot_bayern
   
@@ -695,9 +753,137 @@ This distinction holds significant implications, especially for a young striker 
 
 Therefore, while the allure of joining a team like Bayern Munich is understandable, the strategic fit for a young striker might be more favorable at Borussia Dortmund, given their track record of nurturing diverse talent and providing a platform for various strikers to excel. This analysis is pivotal in guiding our decision-making process, ensuring that the chosen team aligns with the striker's need for growth and exposure in the early stages of their career.
 
-\-\-\-\-\-\-- HEAT MAP -------
 
-\
+The code for heatmap visualisation was taken from this [article:](https://towardsdatascience.com/how-to-visualize-football-data-using-r-ee963b3a0ba4)
+
+
+```{r load data, warning =FALSE, message = FALSE}
+# Retrieve all available competitions
+Comp <- FreeCompetitions()
+
+
+# Filter the competition
+ucl_german <- Comp %>%
+  filter(competition_id==16 & season_name=="2012/2013")
+
+#ucl_german <- Comp %>%
+#  filter(competition_id==16 & season_name=="2011/2012")
+
+
+#ucl_german <- Comp %>%
+#  filter(competition_id==16 & season_name=="2009/2010")
+
+
+# Retrieve all available matches
+matches <- FreeMatches(ucl_german)
+
+# Retrieve the event data
+events_df <- get.matchFree(matches)
+
+
+# Preprocess the data
+clean_df <- allclean(events_df)
+
+```
+
+```{r prepare datasets, warning =FALSE, message = FALSE}
+
+bayern_pressure <- clean_df %>%
+  filter(team.name == 'Bayern Munich') %>%
+  filter(type.name == 'Pressure')
+
+borussia_pressure <- clean_df %>%
+  filter(team.name == 'Borussia Dortmund') %>%
+  filter(type.name == 'Pressure')
+
+```
+
+```{r plot heatmaps, warning= FALSE, message= FALSE}
+
+p6 <- ggplot(bayern_pressure) +
+  # generate background as a football venue. LBS color + White
+  annotate_pitch(dimensions = pitch_statsbomb, fill='#05205e', colour='#ffffff') +
+  
+  # generate heatmap based on X and Y pressure positions
+  geom_density2d_filled(aes(location.x, location.y, fill=..level..), alpha=0.4, contour_var= 'ndensity' ) +
+  
+  # limit X and Y axes
+  scale_x_continuous(c(0, 120)) +
+  scale_y_continuous(c(0, 80)) +
+  
+  # Add titles and caption
+  labs(title="Bayern Munich Pressure Heat Map",
+       subtitle="UEFA Champions League Final 12/13") + 
+  
+  # Make plot nicer
+  theme_minimal() +
+  
+  # Change theme
+  theme(
+    #plot.background = element_rect(fill='#021e3f', color='#021e3f'),
+    #panel.background = element_rect(fill='#021e3f', color='#021e3f'),
+    
+    # Adjust title and subtitle position
+    plot.title = element_text(hjust=0, face="bold", size=12),
+    plot.subtitle = element_text(hjust=0, size=8),
+  
+    
+    # Remove grid and axis ticks/ text
+    panel.grid = element_blank(),
+    axis.title = element_blank(),
+    axis.text = element_blank(),
+    
+    # Remove legend
+    legend.position = "none"
+  )
+
+
+p7 <- ggplot(borussia_pressure) +
+  # generate background as a football venue. LBS color + White
+  annotate_pitch(dimensions = pitch_statsbomb, fill='#05205e', colour='#ffffff') +
+  
+  # generate heatmap based on X and Y pressure positions
+  geom_density2d_filled(aes(location.x, location.y, fill=..level..), alpha=0.4, contour_var= 'ndensity' ) +
+  
+  # limit X and Y axes
+  scale_x_continuous(c(0, 120)) +
+  scale_y_continuous(c(0, 80)) +
+  
+  # Add titles and caption
+  labs(title="Borussia Dortmund Pressure Heat Map",
+       subtitle="UEFA Champions League Final 12/13",
+       caption="Data Source: StatsBomb") + 
+  
+  # Make plot nicer
+  theme_minimal() +
+  
+  # Change theme
+  theme(
+    #plot.background = element_rect(fill='#021e3f', color='#021e3f'),
+    #panel.background = element_rect(fill='#021e3f', color='#021e3f'),
+    
+    # Adjust title and subtitle position
+    plot.title = element_text(hjust=0., face="bold", size=12),
+    plot.subtitle = element_text(hjust=0, size=8),
+    plot.caption = element_text(hjust=0.95),
+    
+  
+    
+    # Remove grid and axis ticks/ text
+    panel.grid = element_blank(),
+    axis.title = element_blank(),
+    axis.text = element_blank(),
+    
+    # Remove legend
+    legend.position = "none"
+  )
+
+
+#### Plot 2 graphs together
+(p6 / p7)
+
+```
+
 The insights garnered from the heat map analysis offer a nuanced understanding of the tactical preferences and playing styles of Borussia Dortmund and Bayern Munich. Our findings indicate that Borussia Dortmund exhibits a versatile and balanced approach in their gameplay, utilizing both the left and right flanks effectively. This tactical diversity suggests a dynamic and adaptable strategy, providing various avenues for offensive play.
 
 In contrast, Bayern Munich displays a more concentrated and focused strategy in their gameplay. While this approach has proven successful for them, it denotes a less varied tactical execution compared to Borussia Dortmund.
@@ -712,7 +898,7 @@ Our methodology for this phase of analysis will entail a detailed examination of
 
 By juxtaposing these analytical insights against the skill set and potential of our striker, we aim to identify the most strategic fit within the Dortmund squad.
 
-```{r}
+```{r, warning =FALSE, message = FALSE}
 goals_dortmund_Erling <- left_join(new_Data, players, by = c("shooterID" = "playerID"))%>% 
   filter(homeTeamID == 129 | awayTeamID == 129) %>% 
   filter(shooterID == 8260)%>% 
@@ -738,14 +924,14 @@ custom_colors <- c("OpenPlay" = "#e66101",
 
 sancho_goals <- ggplot(goals_dortmund_Sancho) +
   annotate_pitch(colour = "white",
-                 fill   = "springgreen4",
+                 fill   = "#05205e",
                  limits = FALSE) +
   geom_point(aes(x = positionX*100, y = positionY*100, color = situation),
              # colour = "yellow",
              size = 4) +
   scale_color_manual(values = custom_colors) + 
   theme_pitch() +
-  theme(panel.background = element_rect(fill = "springgreen4")) +
+  theme(panel.background = element_rect(fill = "#05205e")) +
   ggtitle("Simple shotmap",
           "ggsoccer example")+
   coord_flip(xlim = c(50, 101)) +
@@ -755,7 +941,7 @@ sancho_goals <- ggplot(goals_dortmund_Sancho) +
        subtitle = "Scatter plot showing goal scoring positions by different game plays"
        )+
   theme(
-  plot.title = element_text(hjust = 0),      # Left align title
+  plot.title = element_text(hjust = 0, face="bold", size=18),      # Left align title
   plot.subtitle = element_text(hjust = 0)    # Left align subtitle
 )
 
@@ -763,14 +949,14 @@ sancho_goals <- ggplot(goals_dortmund_Sancho) +
 
 erling_goals <- ggplot(goals_dortmund_Erling) +
   annotate_pitch(colour = "white",
-                 fill   = "springgreen4",
+                 fill   = "#05205e",
                  limits = FALSE) +
   geom_point(aes(x = positionX*100, y = positionY*100, color = situation),
              # colour = "yellow",
              size = 4) +
   scale_color_manual(values = custom_colors) +
   theme_pitch() +
-  theme(panel.background = element_rect(fill = "springgreen4")) +
+  theme(panel.background = element_rect(fill = "#05205e")) +
   ggtitle("Simple shotmap",
           "ggsoccer example")+
   coord_flip(xlim = c(50, 101)) +
@@ -780,20 +966,20 @@ erling_goals <- ggplot(goals_dortmund_Erling) +
        subtitle = "Scatter plot showing goal scoring positions by different game plays"
        )+
   theme(
-  plot.title = element_text(hjust = 0),      # Left align title
+  plot.title = element_text(hjust = 0, face="bold", size=18),      # Left align title
   plot.subtitle = element_text(hjust = 0)    # Left align subtitle
 )
 
 marco_goals <- ggplot(goals_dortmund_Marco) +
   annotate_pitch(colour = "white",
-                 fill   = "springgreen4",
+                 fill   = "#05205e",
                  limits = FALSE) +
   geom_point(aes(x = positionX*100, y = positionY*100, color = situation),
              # colour = "yellow",
              size = 4) +
   scale_color_manual(values = custom_colors) +
   theme_pitch() +
-  theme(panel.background = element_rect(fill = "springgreen4")) +
+  theme(panel.background = element_rect(fill = "#05205e")) +
   ggtitle("Simple shotmap",
           "ggsoccer example")+
   coord_flip(xlim = c(50, 101)) +
@@ -803,7 +989,7 @@ marco_goals <- ggplot(goals_dortmund_Marco) +
        subtitle = "Scatter plot showing goal scoring positions by different game plays"
        )+
   theme(
-  plot.title = element_text(hjust = 0),      # Left align title
+  plot.title = element_text(hjust = 0, face="bold", size=18),      # Left align title
   plot.subtitle = element_text(hjust = 0)    # Left align subtitle
 )
 
@@ -819,7 +1005,7 @@ Erling Haaland emerges as a potent force in close-range scenarios, predominantly
 
 However, it's imperative to acknowledge that goal-scoring alone does not paint the complete picture of a player's effectiveness. A more holistic view encompassing shot accuracy is essential to gauge overall efficiency in front of the goal. This further analysis will delve into each player's shot precision, providing additional layers of insight into their contributions and helping us refine our recommendation for the most strategic replacement. By evaluating both the quality and accuracy of shots, we aim to ensure a comprehensive assessment that aligns with our striker's attributes and Dortmund's tactical requirements.
 
-```{r}
+```{r, warning =FALSE, message = FALSE}
 shots_three_players <- left_join(new_Data, players, by = c("shooterID" = "playerID"))%>% 
   filter(homeTeamID == 129 | awayTeamID == 129) %>% 
   filter(shooterID == 8260 | shooterID == 319 | shooterID == 6345) %>% 
@@ -834,7 +1020,7 @@ shots_three_players <- left_join(new_Data, players, by = c("shooterID" = "player
 
 ggplot(shots_three_players, aes(x = name, y = shotResult, fill = percent)) + 
   geom_tile(color = "white") +
-  scale_fill_gradient(low = "white", high = "#FDE100") +
+  scale_fill_gradient(low = "grey", high = "#FDE100") +
   labs(title = "Shot Results Heat Map", x = "Player", y = "Shot Result", fill = "Percent") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))+# To rotate x labels for better readability
@@ -844,9 +1030,13 @@ ggplot(shots_three_players, aes(x = name, y = shotResult, fill = percent)) +
     axis.title.x = element_blank(),
     axis.title.y = element_blank(),
     axis.ticks = element_blank(),  # Remove axis ticks
-    legend.position = "none"
+    legend.position = "none",
+    plot.title = element_text(face="bold", size=18),
+    panel.grid.major = element_blank(), 
+    panel.grid.minor =element_blank()
   )+
-  labs(title = "Haaland is a scoring machine, Sancho is a balanced player & Marco is weak",
+  labs(title = "Haaland is a scoring machine, Sancho is a 
+balanced player & Marco is weak",
        subtitle = "Heat map showing outcome of a shot as a percentage of total shots across three players"
        )+
   theme(
@@ -861,7 +1051,7 @@ On the other hand, Jadon Sancho does not exhibit a standout feature in terms of 
 
 An integral part of a striker's role extends beyond just goal-scoring; it involves contributing to the team's overall play through key passes that create scoring opportunities. The upcoming section of our analysis will delve into this dimension, examining each player's capability and effectiveness in providing key passes.
 
-```{r}
+```{r, warning =FALSE, message = FALSE}
 assist_three_players <- left_join(new_Data, players, by = c("shooterID" = "playerID"))%>% 
   filter(homeTeamID == 129 | awayTeamID == 129) %>% 
   filter(assisterID == 8260 | assisterID == 319 | assisterID == 6345) %>% 
@@ -877,7 +1067,7 @@ assist_three_players <- left_join(new_Data, players, by = c("shooterID" = "playe
 
 ggplot(assist_three_players, aes(x = assisterID, y = shotResult, fill = percent)) + 
   geom_tile(color = "white") +
-  scale_fill_gradient(low = "white", high = "#FDE100") +
+  scale_fill_gradient(low = "grey", high = "#FDE100") +
   labs(title = "Shot Results Heat Map", x = "Player", y = "Shot Result", fill = "Percent") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))+# To rotate x labels for better readability
@@ -887,9 +1077,13 @@ ggplot(assist_three_players, aes(x = assisterID, y = shotResult, fill = percent)
     axis.title.x = element_blank(),
     axis.title.y = element_blank(),
     axis.ticks = element_blank(),  # Remove axis ticks
-    legend.position = "none"
+    legend.position = "none",
+    plot.title = element_text(face="bold", size=18),
+    panel.grid.major = element_blank(), 
+    panel.grid.minor =element_blank()
   )+
-  labs(title = "Erling Haaland sets the pass in a better position that other two players",
+  labs(title = "Erling Haaland sets the pass in a better position 
+than other two players",
        subtitle = "Heat map showing outcome of a key pass as a percentage of total shots across three players"
        )+
   theme(
