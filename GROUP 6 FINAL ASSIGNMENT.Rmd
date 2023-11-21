@@ -1,0 +1,920 @@
+---
+title: "group project"
+output: html_document
+date: "2023-11-20"
+---
+
+# Where should a striker go to become world class?
+
+## 1) Introduction
+
+At Star-In-Making, we are committed to harnessing the power of data analytics to guide emerging strikers in selecting the optimal team to commence their professional careers. We recognize the significance of the initial step in shaping their global brand and leading the scoring charts in competitive leagues. Understanding the nuances of European football's competitive environment, we emphasize the importance of a well-suited match between a player's attributes and a league's characteristics. For instance, a league with a reputation for physicality may not be the ideal setting for a player with less physical prowess.
+
+To address this, Star-In-Making has developed a methodological approach based on historical data analysis to assist strikers in making well-informed decisions. Our methodology encompasses a three-fold strategy:
+
+1.  Identifying the most suitable league for a striker's skill set and playing style.
+
+2.  Determining the teams that provide the best opportunities for goal scoring.
+
+3.  Analyzing potential team members whom they might effectively replace.
+
+While our approach takes into consideration a multitude of variables, it adheres to the Pareto Principle (80/20 rule), ensuring that it serves as an efficient and pragmatic first step in the decision-making process. Our overarching goal is to lay the foundation for nurturing future Ballon d'Or contenders, solidifying our commitment to fostering exceptional talent in the realm of international football.
+
+## 2) Analysis
+
+### a) Inspect, Clean, Explore
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r warning=FALSE}
+install.packages('ggsoccer')
+install.packages("patchwork")
+```
+
+```{r include=FALSE}
+library(tidyverse)
+library(lubridate)
+library(ggrepel)
+library(gridExtra)
+library(janitor)
+library(skimr)
+library(hrbrthemes)
+library(ggplot2)
+library(vroom)
+library(readr)
+library(forcats)  # Load forcats for fct_reorder function
+library(ggsoccer)
+library(patchwork)
+
+
+```
+
+```{r warning=FALSE}
+
+appearances <- read_csv("appearances.csv")
+
+players <- read_csv("players.csv")
+
+teams <- read_csv("teams.csv")
+
+teamstats <- read_csv("teamstats.csv")
+
+shots <- read_csv("shots.csv")
+
+leagues <- read_csv("leagues.csv")
+
+games <- read_csv("games.csv")
+
+
+
+```
+
+Star-In-Making's analytical framework is underpinned by a comprehensive database comprising seven distinct but interconnected data sets. These datasets are meticulously linked through key identifiers: League ID, Player ID, and Game ID. This extensive repository encompasses detailed match-level data from five major European leagues, spanning a period from 2015 to 2021.
+
+Our approach is not only retrospective but also forward-looking. By leveraging historical data, we aim to validate our recommendations against the current European standings and the real-time performance of the players we suggest as potential replacements. This method ensures a robust, data-driven foundation for our recommendations, enabling us to provide strategic insights with a high degree of accuracy and relevance to the contemporary football landscape.
+
+### b) What League should the striker join?
+
+In addressing the pivotal question of determining the most suitable league for a striker to join, Star-In-Making employs a strategic approach grounded in our extensive experience and understanding of the variances in competitiveness and playing styles across different leagues. Our objective is to align the striker with a league that offers an ecosystem conducive to their flourishing and development.
+
+Our analysis delves into key metrics that are critical in evaluating the compatibility between a player's skills and a league's characteristics. These metrics include:
+
+1.  **Average Goals Scored Per Game**: This indicator provides insight into the offensive nature of the league and the potential opportunities for a striker to score.
+
+2.  **Fouls Per Game (Including Yellow and Red Cards)**: This measure sheds light on the physicality and disciplinary aspects of the league, which are crucial for understanding the level of physical challenge a player might face.
+
+3.  **Distribution of Goal Scoring Percentage Across the League**: This analysis helps in understanding how goals are spread among teams, indicating whether a league is dominated by a few teams or if scoring opportunities are more evenly distributed.
+
+```{r warning=FALSE}
+#Create two columns showing the total amount of home and away goals per game
+goals_per_game <-
+  games %>% 
+  group_by(leagueID, season, gameID) %>% 
+  summarise(away_g = sum(awayGoals),
+            home_g = sum(homeGoals))
+
+# Create a two columns showing the total amount of home and away goals per league
+goals <-
+  goals_per_game %>% 
+  group_by(gameID, leagueID) %>% 
+  summarise(away_g = sum(away_g),
+            home_g = sum(home_g),
+            count=n()) %>% 
+  
+  # Use ungroup so we can group by league and summarise
+  ungroup() %>% 
+  group_by(leagueID) %>% 
+  summarise(away_g = sum(away_g),
+            home_g = sum(home_g),
+            games = sum(count),
+            avg_away = (away_g/(games/2)),
+            avg_home = (home_g/(games/2)))
+
+# Pivot Longer to make the dataset ready to plot.
+goals_longer<- 
+  goals %>% 
+  pivot_longer(cols = c(avg_away, avg_home), names_to = "type", values_to = "number")
+
+```
+
+```{r}
+# Match the league names
+league_names <- c("1" = "Premier League", "2" = "Serie A", "3" = "Bundesliga", "4" = "La Liga", "5" = "Ligue 1")
+
+# Set default colors for home and away
+home_color <- "#515151"
+away_color <- "gray"
+
+# Specific colors for Bundesliga
+bundesliga_home_color <- "#D3010C"  # blue
+bundesliga_away_color <- "#e06f6f"  # orange
+
+# Create a unique identifier for each bar based on leagueID and type
+goals_longer <- goals_longer %>% 
+  mutate(color_id =ifelse(leagueID == 3,
+                                paste(leagueID, type, sep = "_"),
+                                paste("other", type, sep = "_")) )
+
+
+# Create a named vector of colors for each type
+color_values <- setNames(
+  c(away_color, home_color, bundesliga_away_color, bundesliga_home_color),
+  c("other_avg_away", "other_avg_home", "3_avg_away", "3_avg_home"))
+
+# Create the labels for the legend
+labels_for_legend <- c("Bundesliga Away Goals", "Bundesliga Home Goals", "Away Goals", "Home Goals") # Modify these as you like
+
+
+# Plot
+plot_goals <- 
+  goals_longer %>% 
+  ggplot(aes(leagueID, number, fill=color_id))+
+  geom_col(position = "dodge")+
+   geom_text(aes(label = round(number,2), group = color_id),
+            position = position_dodge(width = 0.9),
+            vjust = -0.3, size = 3) +
+  scale_fill_manual(values = color_values,
+                    labels = labels_for_legend) +
+  scale_x_continuous(breaks = 
+                       as.numeric(names(league_names)), labels = league_names)+
+   labs(x = "League", y = "Average Goals per Game", 
+       title = "The Bundesliga Stands Out: Leading in Average Goals per Game",
+       subtitle = "Home vs. Away: A Comparison of Average Goals Across Leagues")+
+  theme(legend.title = element_blank())+
+  theme_minimal()
+  
+  
+# Print the plot
+plot_goals
+
+
+```
+
+The analysis of our data sets has yielded a compelling insight, particularly regarding the Bundesliga's standing as a highly favorable environment for strikers. The graph we have compiled presents a clear picture: the Bundesliga leads in terms of average home and away goals scored per game. This trend positions the Bundesliga as an ideal destination for strikers looking to maximize their goal-scoring potential.
+
+Given that the number of games played across the various leagues shows no significant statistical variance, we deduce that the Bundesliga's higher goal-scoring rate can be attributed to one of two likely factors:
+
+1.  **Relative Competitiveness of the League**: It's possible that the Bundesliga might exhibit a lower degree of competitiveness compared to its counterparts, resulting in certain teams scoring a disproportionately high number of goals.
+
+2.  **Offensive Playing Style**: Alternatively, the league may inherently prioritize an attacking style of play, naturally leading to more goal-scoring opportunities.
+
+In either case, these factors significantly contribute to the Bundesliga's appeal as a strikingly favorable league for goal-scorers.
+
+```{r}
+# Join tables
+data <- teamstats %>% 
+  left_join(games, by = "gameID") 
+```
+
+```{r plots dangerous, warning= FALSE, message = FALSE}
+
+# Plot Yellow cards
+data %>% 
+  # select columns
+  select(leagueID, fouls, yellowCards) %>% 
+  
+  # drop NAs
+  drop_na(yellowCards) %>% 
+  group_by(leagueID) %>% 
+  
+  # Find avg # of cards
+  summarise(yellowCards = mean(yellowCards)) %>% 
+  
+  # Join league names
+  left_join(leagues, by = "leagueID") %>% 
+  
+  # Column to color
+  mutate(highlight = ifelse(leagueID %in% c(2,4), 1, 0)) %>% 
+  
+  # Plot
+  ggplot(aes(x = fct_reorder(name, leagueID), y = yellowCards, fill = factor(highlight))) +
+  geom_col() +
+   
+  # Custom colors
+  scale_fill_manual(values=c('#bebebe', '#eda247')) +
+  
+  # Custom titles and axes
+  labs(title = "Seria A and La Liga have more yellow cards",
+       subtitle = "Average number of yellow cards per game",
+       x = "",
+       y = ""
+       #y = "Yellow cards per game"
+       ) +
+  
+  theme_minimal() +
+  
+  # More customization
+  theme(plot.title = element_text(face="bold", size=18),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor =element_blank(),
+        legend.position = "")
+
+
+
+# Plot Red cards
+data %>% 
+  # select columns
+  select(leagueID, fouls, redCards) %>% 
+  
+  # drop NAs
+  drop_na(redCards) %>% 
+  group_by(leagueID) %>% 
+  
+  # Find avg # of cards
+  summarise(redCards = mean(redCards)) %>% 
+  
+  # Join league names
+  left_join(leagues, by = "leagueID") %>% 
+  
+  # Column to color
+  mutate(highlight = ifelse(leagueID %in% c(2, 5), 1, 0)) %>% 
+  
+  # Plot
+  ggplot(aes(x = fct_reorder(name, leagueID), y = redCards, fill = factor(highlight))) +
+  geom_col() +
+  
+  # Custom colors
+  scale_fill_manual(values=c('#bebebe', '#c70007')) +
+  
+  # Custom titles and axes
+  labs(title = "Seria A and Ligue 1 have more red cards",
+       subtitle = "Average number of red cards per game",
+       x = "",
+       y = ""
+       #y = "Red cards per game"
+       ) +
+  
+  theme_minimal() +
+  
+  # More customization
+  theme(plot.title = element_text(face="bold", size=18),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor =element_blank(),
+        legend.position = "")
+
+#####
+
+
+# Plot Fouls
+data %>% 
+  # select columns
+  select(leagueID, fouls) %>% 
+  group_by(leagueID) %>% 
+  
+  # Find avg # of fouls
+  summarise(fouls = mean(fouls)) %>% 
+  
+  # Join league names
+  left_join(leagues, by = "leagueID") %>% 
+  
+  # Column to color
+  mutate(highlight = ifelse(leagueID %in% c(2,4), 1, 0)) %>% 
+  
+  # Plot
+  ggplot(aes(x = fct_reorder(name, leagueID), y = fouls, fill = factor(highlight))) +
+  geom_col() +
+  
+  # Custom colors
+  scale_fill_manual(values=c('#bebebe', '#c70007')) +
+  
+  # Custom titles and axes
+  labs(title = "Seria A and La Liga are more 'dangerous'",
+       subtitle = "Average number of fouls per game",
+       x = "",
+       y = ""
+       #y = "Fouls cards per game"
+       ) +
+  
+  theme_minimal() +
+  
+  # More customization
+  theme(plot.title = element_text(face="bold", size=18),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor =element_blank(),
+        legend.position = "")
+
+```
+
+Our comprehensive analysis, supported by graphically represented data, reveals significant insights into the disciplinary aspects of various leagues, with a particular focus on Serie A, La Liga, and Ligue 1. The findings from our study lead to several key conclusions:
+
+1.  **Ligue 1's Disciplinary Concerns**: The data indicates that Ligue 1 experiences a notably high frequency of red cards. This suggests that the nature of fouls in this league tends to be more severe, potentially leading to direct red card offenses. Such a trend raises concerns about the harshness of challenges faced by players in Ligue 1.
+
+2.  **Serie A and La Liga's Risk of Injury**: Both Serie A and La Liga are characterized by a higher number of fouls and yellow cards. This increased rate of fouls correlates with a heightened risk of injury for players, as frequent physical challenges can lead to more frequent and potentially serious injuries.
+
+3.  **Bundesliga as the Preferred Choice**: Integrating this analysis with our earlier conclusions about goal-scoring opportunities, the Bundesliga emerges as a particularly attractive option for strikers. Not only does it offer a higher average of goals scored per game, but it also appears to have a lower risk of severe fouls and injuries compared to Serie A, La Liga, and Ligue 1. This combination of factors makes the Bundesliga an ideal league for strikers to commence their careers, offering a balance of high goal-scoring potential and a relatively safer playing environment.
+
+```{r}
+# Merge datasets
+m_data <- merge(teamstats, games, by = "gameID", all.x = TRUE)
+merge_data <- merge(m_data, leagues, by = "leagueID", all.x = TRUE)
+merged_data <- merge(merge_data, teams, by = "teamID", all.x = TRUE)
+
+```
+
+```{r}
+
+# Calculate the total goals scored by each team in one league
+total_goals_by_team <- merged_data %>%
+  filter(leagueID %in% c(1, 3, 5)) %>% 
+  group_by(name.y, name.x) %>%
+  summarise(total_goals = sum(goals))
+
+# Calculate the percentage of goals scored by each team in one league
+percentage_goals_by_team <- total_goals_by_team %>%
+  group_by(name.x) %>%
+  mutate(percentage_goals = (total_goals / sum(total_goals)) * 100)
+
+# Convert teamID to character
+unique_merged_data_league <- percentage_goals_by_team %>% 
+  mutate(name.y = as.factor(name.y))
+
+# Reorder teamID levels within each league in descending order
+unique_merged_data_league <- unique_merged_data_league %>% 
+  group_by(name.x) %>% 
+  mutate(name.y = fct_reorder(name.y, percentage_goals, .desc = TRUE))
+
+# Get the top 5 teams in each league with the highest share of goals scored
+top_5_teams <- unique_merged_data_league %>%
+  group_by(name.x) %>%
+  slice_max(order_by = percentage_goals, n = 5) %>%
+  mutate(name.y = fct_reorder(name.y, percentage_goals, .desc = TRUE)) %>% 
+  select(percentage_goals, name.y, name.x)
+
+# Create a bar plot using ggplot2
+ggplot(top_5_teams, aes(x = percentage_goals, y = fct_reorder(name.y, percentage_goals), fill = as.factor(name.x))) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = sprintf("%.2f%%", percentage_goals), group = name.x), 
+            position = position_nudge(x = 1.0), size = 3) +
+  scale_fill_manual(values = c("Premier League" = "#38003c", "Bundesliga" = "#D3010C", "Ligue 1" = "#dae025")) +
+  # Set specific league colors
+  facet_wrap(~ name.x, scales = "free_y") +
+  labs(title = "Bayern Munich and Borussia Dortmund collectively score 17.92% goals for Bundesliga, making it a top choice", caption = " Top 5 Teams with Highest Share of Goals Scored in Each League",
+       x = "Percentage of Goals Scored (Within League)", y = "Team Names") +
+  theme_minimal() + 
+  scale_x_continuous() +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(hjust = 0),      # Left align title
+    plot.subtitle = element_text(hjust = 0)    # Left align subtitle
+    )
+
+
+```
+
+The analytical insights derived from our graph not only reinforce the Bundesliga as the league of choice but also pinpoint two prominent teams, Bayern Munich and Borussia Dortmund, as key players in the league's goal-scoring dynamics. This detailed analysis leads us to a decisive conclusion regarding the Bundesliga as the optimal league for a burgeoning striker.
+
+Our findings clearly illustrate that Bayern Munich and Borussia Dortmund contribute significantly to the Bundesliga's high goal tally. This dominance in goal scoring presents two distinct opportunities for a striker:
+
+1.  **Joining Bayern Munich**: Aligning with Bayern Munich offers the striker a chance to be part of an already prolific goal-scoring setup. The team's track record and established success in finding the back of the net provide an ideal platform for a striker to flourish and contribute to the team's ongoing dominance.
+
+2.  **Supporting Borussia Dortmund**: Alternatively, joining Borussia Dortmund presents a unique opportunity to play a crucial role in bridging the gap to Bayern Munich. This path involves aiding Dortmund in enhancing their offensive capabilities to compete more closely with Bayern Munich's scoring prowess.
+
+### c) What team should he join?
+
+Determining the most suitable team for a striker is a multifaceted and intricate endeavor, influenced by a myriad of factors, including managerial tactics, transfer dynamics, financial capabilities, and other less tangible elements. Nevertheless, adhering to the Pareto Principle (80/20 rule), our focus will be streamlined to concentrate on key, impactful metrics that offer significant insights. Our analysis includes:
+
+1.  **Key Passes / Assist Analysis**: Teams exhibiting a lower conversion rate of key passes into assists present an opportunity for a striker. Key passes represent goal-scoring opportunities that have not been capitalized on, indicating potential for a striker to enhance the team's effectiveness in front of the goal.
+
+2.  **Examination of Set Pieces and Offensive Metrics**: We will delve into the frequency of corners, the average number of shots taken, and the rate of completed passes. These statistics provide an understanding of a team's offensive approach and the availability of scoring opportunities.
+
+3.  **Analysis of Each Team's Top Scorer Over the Years**: Reviewing the performance and strategies of the top scorers in each team across different seasons will shed light on the team's attacking playstyle and the role a striker is likely to assume.
+
+4.  **Heat Map for Ball Possession and Tactical Concentration**: A heat map analysis will enable us to visualize the areas of the pitch where teams concentrate their play, offering insights into their tactical inclinations and ball possession patterns.
+
+```{r}
+# keep only required teams
+games1 <- games %>% 
+  filter(leagueID == 3) %>% 
+  filter(homeTeamID == 117 | homeTeamID == 129 | awayTeamID == 117 | awayTeamID == 129) %>% 
+  select(gameID, homeTeamID, awayTeamID)
+
+# reduce columns
+appearances1 <- appearances %>% 
+  select(gameID, playerID)
+
+# join 2 tables
+pairs <- games %>% 
+  left_join(appearances, by = "gameID")
+
+# create pairs: away + player and home + player
+pairs <- pairs %>% 
+  mutate(pl_matches = paste(homeTeamID, playerID, sep = "+"),
+         pl_matches2 = paste(awayTeamID, playerID, sep = "+"))
+
+# calculate appearances
+match_player <- pairs %>% 
+  pivot_longer(cols = c(pl_matches, pl_matches2), names_to = "names", values_to = "matches") %>% 
+  select(-names) %>% 
+  count(matches) %>% 
+  arrange(desc(n))
+
+# select only most common cases
+players1 <- match_player %>% 
+  mutate(teamID = substring(matches, first = 1, last = 3),
+         playerID = substring(matches, first = 5, last = 7)) %>% 
+  filter(teamID == 117 | teamID == 129) %>% 
+  distinct(teamID, playerID) 
+
+
+
+```
+
+```{r}
+# Creating a database which shows key passes per team
+# Select only the relevant columns
+appearances <- appearances %>% 
+  select(playerID, gameID, keyPasses, assists, leagueID) %>% 
+  mutate(playerID = as.factor(playerID))
+
+# Match the player ID with the Team ID
+pct_key_passes <-
+  left_join(appearances, players1, by = "playerID") %>% 
+  na.omit()
+
+# Create a Dataset with only game ID and Season
+season <- games %>% 
+  select(gameID, season)
+
+# Match the season to the game ID
+
+pct_key_passes <- left_join(pct_key_passes, season, by = "gameID")
+
+
+# Summarise the assists and key passes per team
+pct_key_passes <-
+  pct_key_passes %>% 
+  group_by(teamID, season) %>% 
+  summarise(key_passes = sum(keyPasses),
+            assists = sum(assists))
+
+# Create a column with the ratio key passes : assists
+pct_key_passes <-
+  pct_key_passes %>% 
+  mutate(ratio = key_passes/assists) 
+
+```
+
+```{r}
+# Create a named vector with the team IDs and corresponding names to use when facet wraping
+team_names <- setNames(c("Bayern Munich", "Borussia Dortmund"), c("117", "129"))
+
+# Define the colors for each team
+team_colors <- c('117' = '#DC052D', '129' = '#FDE100')
+
+
+plot_keyp <- ggplot(pct_key_passes, aes(x = season, y = ratio, group = teamID, 
+                                        color = as.factor(teamID))) +
+  geom_line() +
+  geom_point()+
+  facet_wrap(~teamID, labeller = labeller(teamID = team_names)) +  
+  scale_color_manual(values = team_colors) +
+  geom_text(aes(label = round(ratio, 2)),    
+            vjust = -1,                      
+            hjust = 0.5,                  
+            color = "black",
+            size=2.5)+
+   labs(title = "Synced Trajectories: Bayern Munich and Borussia Dortmund Match Playmaking Trends",
+       subtitle = "Key Passes to Assists Ratios Reveal Consistent Patterns from 2014 to 2020") +
+  scale_y_continuous(limits = c(0,NA))+
+  theme(legend.position = "none")
+
+plot_keyp
+```
+
+The graph we have analyzed reveals a noteworthy trend: both teams under consideration demonstrate parallel patterns across the observed seasons, with a remarkably similar ratio in the metrics being evaluated. This consistency in trend and the close alignment in their statistical ratios indicate an absence of significant differentiation between the two teams. However, we can look at other factors.
+
+```{r opportunities, warning= FALSE, message = FALSE}
+
+# Plot Corners
+data %>% 
+  # Filter teams
+  filter(teamID == 117 | teamID == 129) %>% 
+  
+  # select columns
+  select(corners, teamID) %>% 
+  group_by(teamID) %>% 
+  
+  # Find avg # of fouls
+  summarise(corners = mean(corners)) %>% 
+  
+  # Join league names
+  left_join(teams, by = "teamID") %>% 
+  
+  # Plot
+  ggplot(aes(x = fct_reorder(name, teamID), y = corners, fill = name)) +
+  geom_col() +
+  
+  # Custom colors
+  scale_fill_manual(values=c('#c70007', '#FDE100')) +
+  
+  # Custom titles and axes
+  labs(title = "Bayern Munich creates more opportunities to score",
+       subtitle = "Average number of corners per game",
+       x = "",
+       y = ""
+       ) +
+  
+  theme_minimal() +
+  
+  # More customization
+  theme(plot.title = element_text(face="bold", size=18),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor =element_blank(),
+        legend.position = "")
+
+#####
+
+
+# Plot Shots
+data %>% 
+  # Filter teams
+  filter(teamID == 117 | teamID == 129) %>% 
+  
+  # select columns
+  select(shots, teamID) %>% 
+  group_by(teamID) %>% 
+  
+  # Find avg # of fouls
+  summarise(shots = mean(shots)) %>% 
+  
+  # Join league names
+  left_join(teams, by = "teamID") %>% 
+  
+  # Plot
+  ggplot(aes(x = fct_reorder(name, teamID), y = shots, fill = name)) +
+  geom_col() +
+  
+  # Custom colors
+  scale_fill_manual(values=c('#c70007', '#FDE100')) +
+  
+  # Custom titles and axes
+  labs(title = "Bayern Munich makes more shots",
+       subtitle = "Average number of shots per game",
+       x = "",
+       y = ""
+       ) +
+  
+  theme_minimal() +
+  
+  # More customization
+  theme(plot.title = element_text(face="bold", size=18),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor =element_blank(),
+        legend.position = "")
+
+
+#####
+
+# Plot Completed Passes completed within an estimated distance of 20 yards of goal
+data %>% 
+  # Filter teams
+  filter(teamID == 117 | teamID == 129) %>% 
+  
+  # select columns
+  select(deep, teamID) %>% 
+  group_by(teamID) %>% 
+  
+  # Find avg # of fouls
+  summarise(deep = mean(deep)) %>% 
+  
+  # Join league names
+  left_join(teams, by = "teamID") %>% 
+  
+  # Plot
+  ggplot(aes(x = fct_reorder(name, teamID), y = deep, fill = name)) +
+  geom_col() +
+  
+  # Custom colors
+  scale_fill_manual(values=c('#c70007', '#FDE100')) +
+  
+  # Custom titles and axes
+  labs(title = "Bayern Munich makes more completed passes",
+       subtitle = "Average number of completed passes per game",
+       x = "",
+       y = ""
+       ) +
+  
+  theme_minimal() +
+  
+  # More customization
+  theme(plot.title = element_text(face="bold", size=18),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor =element_blank(),
+        legend.position = "")
+
+```
+
+Our analysis conclusively demonstrates that Bayern Munich consistently outperforms Borussia Dortmund across a range of key metrics, elucidating the reasons behind their sustained success in winning leagues and creating prolific scoring opportunities. This exceptional performance makes Bayern Munich an exemplary choice for any striker seeking a platform characterized by high goal-scoring potential and competitive excellence.
+
+However, it's important to consider the qualitative aspects alongside these quantitative findings, particularly for a young, emerging striker. The likelihood of securing a spot in Bayern Munich's starting eleven might present a significant challenge, given the team's depth of established talent and competitive environment. In contrast, Borussia Dortmund has garnered a reputation for nurturing and developing young talent, offering a potentially more accessible pathway for a fledgling striker to gain valuable playing experience and grow professionally.
+
+```{r}
+games<- games %>% 
+select(gameID, homeTeamID, awayTeamID, date) %>% 
+  mutate(date = as.Date(date,format = "%Y-%m-%d")) %>% 
+  mutate(year = year(date))
+
+new_Data <- left_join(shots, games, by = "gameID")
+top_scorer_dortmund <- left_join(new_Data, players, by = c("shooterID" = "playerID"))%>% 
+  filter(homeTeamID == 129 | awayTeamID == 129) %>% 
+  group_by(year, name) %>% 
+  summarise(count = n(), .groups = "drop") %>% 
+  group_by(year) %>% 
+  top_n(1,count) %>% 
+  rename(name_dortmund = name)
+
+
+top_scorer_bayern <- left_join(new_Data, players, by = c("shooterID" = "playerID"))%>% 
+  filter(homeTeamID == 117 | awayTeamID == 117) %>% 
+  group_by(year, name) %>% 
+  summarise(count = n(), .groups = "drop") %>% 
+  group_by(year) %>% 
+  top_n(1,count)%>% 
+  rename(name_bayern = name)
+
+top_scorer <- left_join(top_scorer_dortmund, top_scorer_bayern, by = "year")
+
+
+plot_dortmund <- ggplot(top_scorer, aes(x = year, y = count.x, color = name_dortmund))+
+  geom_point()+
+  geom_line()+
+  geom_text(aes(label = count.x), vjust = 1.3)+
+  labs(y = "Number of Goals",
+       color = "Dortmund Player",
+       title = "Dortmund has more tactical diversity allowing for different strikers to shine",
+       subtitle = "Top scorer of both clubs in a calendar year"
+       )+
+  theme(
+  axis.title.x = element_blank(),  # Remove x-axis title
+  axis.text.x = element_blank(),   # Remove x-axis text/labels
+  axis.ticks.x = element_blank(),   # Remove x-axis ticks
+  plot.title = element_text(hjust = 0),      # Left align title
+  plot.subtitle = element_text(hjust = 0)    # Left align subtitle
+)
+ 
+plot_bayern <- ggplot(top_scorer, aes(x = year, y = count.y, color = name_bayern))+ 
+  geom_point()+
+  geom_line()+
+  geom_text(aes(label = count.y), vjust = 1.3)+
+  labs(x = "Year",
+       y = "Number of Goals",
+       color = "Bayern Player")
+
+plot_dortmund / plot_bayern
+  
+#Team Strategy is diverse                
+```
+
+The graph we have examined provides compelling insights that align closely with our initial hypothesis, particularly regarding the strategic approaches of Borussia Dortmund and Bayern Munich. Our findings reveal that Borussia Dortmund fosters a diverse and inclusive strategy, allowing multiple strikers to thrive and contribute to the team's offensive efforts. This approach is indicative of a more varied and adaptable tactical framework, which is conducive to the growth and development of different strikers.
+
+In contrast, Bayern Munich appears to adopt a star-striker strategy, focusing on maximizing the potential of a few key players in the offensive lineup. While this approach has undoubtedly contributed to their remarkable success, it implies a more centralized and possibly less varied attacking scheme.
+
+This distinction holds significant implications, especially for a young striker looking to establish themselves. At Bayern Munich, the emphasis on a star-striker strategy might translate to limited playing time for an emerging talent, as the team tends to rely on their established top scorers. On the other hand, Borussia Dortmund's more diverse approach to goal scoring may offer greater opportunities for a young striker to gain playing experience and make a substantial impact.
+
+Therefore, while the allure of joining a team like Bayern Munich is understandable, the strategic fit for a young striker might be more favorable at Borussia Dortmund, given their track record of nurturing diverse talent and providing a platform for various strikers to excel. This analysis is pivotal in guiding our decision-making process, ensuring that the chosen team aligns with the striker's need for growth and exposure in the early stages of their career.
+
+\-\-\-\-\-\-- HEAT MAP -------
+
+\
+The insights garnered from the heat map analysis offer a nuanced understanding of the tactical preferences and playing styles of Borussia Dortmund and Bayern Munich. Our findings indicate that Borussia Dortmund exhibits a versatile and balanced approach in their gameplay, utilizing both the left and right flanks effectively. This tactical diversity suggests a dynamic and adaptable strategy, providing various avenues for offensive play.
+
+In contrast, Bayern Munich displays a more concentrated and focused strategy in their gameplay. While this approach has proven successful for them, it denotes a less varied tactical execution compared to Borussia Dortmund.
+
+Based on these strategic observations, coupled with our comprehensive analysis of both teams' performance metrics and developmental environments, we are confident in recommending Borussia Dortmund as the ideal destination for our striker.
+
+### d) What player should they replace?
+
+As we progress in our analysis, our confidence in Borussia Dortmund's capability to foster the development of our emerging striker remains steadfast. The next crucial step in our evaluation process involves identifying a suitable candidate within Dortmund's current squad whom our striker could potentially replace. To this end, we have narrowed our focus to three prominent strikers from Dortmund: Erling Haaland, Marco Reus, and Jadon Sancho.
+
+Our methodology for this phase of analysis will entail a detailed examination of various performance metrics for each of these players. We plan to deploy a scatter plot analysis to assess their goal-scoring positions, which will provide insights into their spatial effectiveness and preferred areas on the pitch. Additionally, we will scrutinize the accuracy of their shots, a critical metric in determining a striker's efficiency in front of goal. Moreover, the effectiveness of key passes will be evaluated, as this aspect is pivotal in understanding a player's ability to create goal-scoring opportunities for the team.
+
+By juxtaposing these analytical insights against the skill set and potential of our striker, we aim to identify the most strategic fit within the Dortmund squad.
+
+```{r}
+goals_dortmund_Erling <- left_join(new_Data, players, by = c("shooterID" = "playerID"))%>% 
+  filter(homeTeamID == 129 | awayTeamID == 129) %>% 
+  filter(shooterID == 8260)%>% 
+  filter(shotResult == "Goal")
+
+
+goals_dortmund_Marco <- left_join(new_Data, players, by = c("shooterID" = "playerID"))%>% 
+  filter(homeTeamID == 129 | awayTeamID == 129) %>% 
+  filter(shooterID == 319)%>% 
+  filter(shotResult == "Goal")
+
+goals_dortmund_Sancho <- left_join(new_Data, players, by = c("shooterID" = "playerID"))%>% 
+  filter(homeTeamID == 129 | awayTeamID == 129) %>% 
+  filter(shooterID == 6345) %>% 
+  filter(shotResult == "Goal")
+
+custom_colors <- c("OpenPlay" = "#e66101", 
+                   "FromCorner" = "#fdb863", 
+                   "SetPiece" = "#999999", 
+                   "Penalty" = "#b2abd2", 
+                   "DirectFreekick" = "#5e3c99")
+
+
+sancho_goals <- ggplot(goals_dortmund_Sancho) +
+  annotate_pitch(colour = "white",
+                 fill   = "springgreen4",
+                 limits = FALSE) +
+  geom_point(aes(x = positionX*100, y = positionY*100, color = situation),
+             # colour = "yellow",
+             size = 4) +
+  scale_color_manual(values = custom_colors) + 
+  theme_pitch() +
+  theme(panel.background = element_rect(fill = "springgreen4")) +
+  ggtitle("Simple shotmap",
+          "ggsoccer example")+
+  coord_flip(xlim = c(50, 101)) +
+  scale_y_reverse() +
+  labs(color = "Game Play",
+       title = "Sancho scores within the box with different game plays",
+       subtitle = "Scatter plot showing goal scoring positions by different game plays"
+       )+
+  theme(
+  plot.title = element_text(hjust = 0),      # Left align title
+  plot.subtitle = element_text(hjust = 0)    # Left align subtitle
+)
+
+
+
+erling_goals <- ggplot(goals_dortmund_Erling) +
+  annotate_pitch(colour = "white",
+                 fill   = "springgreen4",
+                 limits = FALSE) +
+  geom_point(aes(x = positionX*100, y = positionY*100, color = situation),
+             # colour = "yellow",
+             size = 4) +
+  scale_color_manual(values = custom_colors) +
+  theme_pitch() +
+  theme(panel.background = element_rect(fill = "springgreen4")) +
+  ggtitle("Simple shotmap",
+          "ggsoccer example")+
+  coord_flip(xlim = c(50, 101)) +
+  scale_y_reverse() +
+  labs(color = "Game Play",
+       title = "Haaland scores within the box with Open play and Penalty",
+       subtitle = "Scatter plot showing goal scoring positions by different game plays"
+       )+
+  theme(
+  plot.title = element_text(hjust = 0),      # Left align title
+  plot.subtitle = element_text(hjust = 0)    # Left align subtitle
+)
+
+marco_goals <- ggplot(goals_dortmund_Marco) +
+  annotate_pitch(colour = "white",
+                 fill   = "springgreen4",
+                 limits = FALSE) +
+  geom_point(aes(x = positionX*100, y = positionY*100, color = situation),
+             # colour = "yellow",
+             size = 4) +
+  scale_color_manual(values = custom_colors) +
+  theme_pitch() +
+  theme(panel.background = element_rect(fill = "springgreen4")) +
+  ggtitle("Simple shotmap",
+          "ggsoccer example")+
+  coord_flip(xlim = c(50, 101)) +
+  scale_y_reverse() +
+  labs(color = "Game Play",
+       title = "Marco scores from wihtin and outside the box with different game plays",
+       subtitle = "Scatter plot showing goal scoring positions by different game plays"
+       )+
+  theme(
+  plot.title = element_text(hjust = 0),      # Left align title
+  plot.subtitle = element_text(hjust = 0)    # Left align subtitle
+)
+
+marco_goals
+erling_goals
+sancho_goals
+
+```
+
+The graphical representation we have conducted provides a detailed portrait of the distinct skill sets and goal-scoring abilities of each player within Borussia Dortmund's squad. Our analysis highlights that Erling Haaland, Marco Reus, and Jadon Sancho each bring unique strengths to the team's offensive play.
+
+Erling Haaland emerges as a potent force in close-range scenarios, predominantly scoring from within the box and capitalizing on open play opportunities. In contrast, Marco Reus and Jadon Sancho exhibit a more versatile goal-scoring ability, with proficiency in finding the net from various positions on the field. Particularly noteworthy are Marco Reus's adeptness at converting free kicks and both Reus's and Sancho's effectiveness in set-piece situations. These attributes underscore their value in diversifying the team's attacking strategies.
+
+However, it's imperative to acknowledge that goal-scoring alone does not paint the complete picture of a player's effectiveness. A more holistic view encompassing shot accuracy is essential to gauge overall efficiency in front of the goal. This further analysis will delve into each player's shot precision, providing additional layers of insight into their contributions and helping us refine our recommendation for the most strategic replacement. By evaluating both the quality and accuracy of shots, we aim to ensure a comprehensive assessment that aligns with our striker's attributes and Dortmund's tactical requirements.
+
+```{r}
+shots_three_players <- left_join(new_Data, players, by = c("shooterID" = "playerID"))%>% 
+  filter(homeTeamID == 129 | awayTeamID == 129) %>% 
+  filter(shooterID == 8260 | shooterID == 319 | shooterID == 6345) %>% 
+  group_by(name, shotResult) %>% 
+  summarise(count = n(), .groups = "drop") %>% 
+  group_by(name) %>% 
+  mutate(
+    sum = sum(count),
+    percent = round((count/sum)*100, 2)
+    ) %>% 
+  select(name, shotResult, percent)
+
+ggplot(shots_three_players, aes(x = name, y = shotResult, fill = percent)) + 
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "white", high = "#FDE100") +
+  labs(title = "Shot Results Heat Map", x = "Player", y = "Shot Result", fill = "Percent") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+# To rotate x labels for better readability
+  coord_flip()+
+  geom_text(aes(label = percent))+
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.ticks = element_blank(),  # Remove axis ticks
+    legend.position = "none"
+  )+
+  labs(title = "Haaland is a scoring machine, Sancho is a balanced player & Marco is weak",
+       subtitle = "Heat map showing outcome of a shot as a percentage of total shots across three players"
+       )+
+  theme(
+  plot.title = element_text(hjust = 0),      # Left align title
+  plot.subtitle = element_text(hjust = 0)    # Left align subtitle
+)
+```
+
+Erling Haaland's performance on the heat map distinctly highlights his proficiency in converting a high percentage of shots into goals. This finding underscores his exceptional ability as a finisher, a critical attribute for a striker. Haaland's positioning and conversion rate are indicative of his pivotal role in the team's goal-scoring strategy.
+
+On the other hand, Jadon Sancho does not exhibit a standout feature in terms of shot conversion, which suggests a more balanced or varied role within the team's offensive setup. Meanwhile, the analysis of Marco Reus reveals a tendency to miss more shots, pointing towards a lower precision in shooting. This aspect is noteworthy as it suggests potential areas for improvement or tactical adjustments.
+
+An integral part of a striker's role extends beyond just goal-scoring; it involves contributing to the team's overall play through key passes that create scoring opportunities. The upcoming section of our analysis will delve into this dimension, examining each player's capability and effectiveness in providing key passes.
+
+```{r}
+assist_three_players <- left_join(new_Data, players, by = c("shooterID" = "playerID"))%>% 
+  filter(homeTeamID == 129 | awayTeamID == 129) %>% 
+  filter(assisterID == 8260 | assisterID == 319 | assisterID == 6345) %>% 
+  group_by(assisterID, shotResult) %>% 
+  summarise(count = n(), .groups = "drop", na.rm = TRUE) %>% 
+  group_by(assisterID) %>% 
+  mutate(
+    sum = sum(count),
+    percent = round((count/sum)*100, 2)
+    ) %>% 
+  select(assisterID, shotResult, percent) %>% 
+  mutate(assisterID = as.character(assisterID))
+
+ggplot(assist_three_players, aes(x = assisterID, y = shotResult, fill = percent)) + 
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "white", high = "#FDE100") +
+  labs(title = "Shot Results Heat Map", x = "Player", y = "Shot Result", fill = "Percent") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+# To rotate x labels for better readability
+  coord_flip()+
+  geom_text(aes(label = percent))+
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.ticks = element_blank(),  # Remove axis ticks
+    legend.position = "none"
+  )+
+  labs(title = "Erling Haaland sets the pass in a better position that other two players",
+       subtitle = "Heat map showing outcome of a key pass as a percentage of total shots across three players"
+       )+
+  theme(
+  plot.title = element_text(hjust = 0),      # Left align title
+  plot.subtitle = element_text(hjust = 0)    # Left align subtitle
+)+
+  scale_x_discrete(labels = c("8260" = "Erling Haaland", "6345" = "Jordan Sancho", "319" = "Marco Reus"))
+```
+
+Our analysis suggests that Marco Reus, despite his notable abilities in various aspects of the game, may not excel in the domain of key passing that leads to goal-scoring opportunities. The relatively high number of missed shots following his passes could be indicative of narrower angles or less favorable positions from which these shots are taken. This observation points towards potential tactical adjustments that could enhance the effectiveness of his passing in creating more advantageous scoring opportunities.
+
+Jadon Sancho, in line with previous findings, demonstrates a well-rounded skill set. His balanced approach in both goal-scoring and key passing positions him as a versatile asset to the team's offensive strategy, contributing effectively in various facets of the game.
+
+Conversely, Erling Haaland's tendency to have a significant number of his key passes result in blocked shots suggests a potential area for refinement in his gameplay. This might point to a need for better spatial awareness or decision-making in key pass situations to reduce the likelihood of shots being blocked.
+
+Hence, based on the analysis, the player to replace would be Marco Reus!!
+
+## 3) Conclusion
+
+The methodology is successful is quickly evaluating a potential career for a young striker to join a team. It effectively breaks the problem into three aspects: league, team and player to narrow down to the best option for him to succeed. Our recommendation is also in line with the present, as Dortmund is known as a birthplace of European football legends, and Erling Halland and Jordan Sancho both shifted clubs at a high price. This indicates that Marco Reus was the weakest player, also the most potential to be switched by our striker.
+
+The conclusions drawn from our analysis provide a solid foundation for recommending a strategic path for an emerging striker. However, it's imperative to acknowledge the key assumptions and areas that warrant further exploration to enhance the robustness of our methodology. Addressing these aspects will enable a more tailored and comprehensive approach in guiding the striker's career decisions.
+
+1.  **Personalization to the Striker's Capabilities**: Our current model serves as a generic template that does not account for the specific skill set of the individual striker. Future iterations of the analysis should incorporate a more personalized approach, examining attributes unique to the striker, such as proficiency in heading, free-kick accuracy, or other specialized skills. This will allow for a more precise and relevant recommendation that aligns with the striker's strengths and potential roles within a team.
+
+2.  **Expanding the Heat Map Data**: The current heat map analysis is based on a limited dataset from a single game, which might not comprehensively represent the typical gameplay and strategies employed across different matches or seasons. To mitigate this limitation, it's crucial to aggregate more extensive data covering multiple games and seasons. This broader dataset will provide a more accurate and reliable understanding of the team dynamics and positional play, leading to more informed strategic decisions.
+
+3.  **Incorporating Qualitative Factors**: While our analysis is heavily data-driven, it's essential to integrate qualitative aspects such as the influence of different managers and the impact of transfer market dynamics across seasons. These factors play a significant role in shaping a team's tactical approach and the opportunities available to players. Understanding the managerial philosophies and transfer market trends will add depth to our analysis, offering a more holistic view of the potential environment our striker would be entering.
